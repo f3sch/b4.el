@@ -1,0 +1,6 @@
+#+title: Readme
+#+author: Felix Schlepper
+
+* =b4.el=
+=b4.el= is a small library with wrapper functions for b4.
+It depends on ~transient~ to provide nice menus.
