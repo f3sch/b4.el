@@ -40,28 +40,65 @@
 ;;
 ;;; Code:
 
-(require 'transient)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Required packages/libraries
 
+;; For nice menus
+(require 'transient)
+;; Git stuff
+(require 'vc-git)
+;; Common library
+(require 'cl-lib)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Customization
+
+(defgroup b4 nil
+  "b4 warpper function library."
+  :group 'convenience)
+
+(defcustom b4-git-repo nil
+  "Default directory for executing b4 in.
+Should probably be your kernel git repository."
+  :group 'b4
+  :type '(directory))
+
+(defun b4--git-repo-show ()
+  "Show b4-git-repo variable"
+  (propertize (format "Repo at %s" b4-git-repo) 'face 'success))
+
+(defun b4--git-repo-choose ()
+  "Choose git repo locations"
+    (interactive)
+    ())
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Maintainer-oriented:
 
 ;; TODO
-(defun b4--am (msgid)
+(defun b4--am ()
   "Create an mbox file that is ready for git-am.
 Argument MSGID The message-id.")
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Contributor-oriented:
 
 ;; TODO
 ;; Prep Command
 ;; Preparing a patch series. Either by creating a new branch org enrolling an existing one.
 
-(defun b4--prep ()
+;;;### autoload
+(defun b4-prep ()
   "(EXPERIMENTAL) prepare your series for submission."
   (interactive)
   (b4--prep-transient))
 
 (transient-define-prefix b4--prep-transient ()
   "Prepare your patch series for submission."
+  :incompatible '(("n" "e"))
+  [:description b4--git-repo-show
+                 [("R" b4--git-repo-choose "--repo=")]]
   [["Arguments"
     ("-h" "Show help message and exit" "--help")
     ("-c" "Automatically populate cover letter trailers with To and Cc addresses" "--auto-to-cc")
@@ -71,9 +108,38 @@ Argument MSGID The message-id.")
     ("-f" "Force revision to be this number instead" "--force-revision=")
     ("-m" "Mark current revision as send and reroll (requires cover letter msgid)" "--manual-reroll=")]]
   [["Create new branch"
-    ("n" "Create a new branch for working on a patch series" (lambda () (interactive) (message "New branch")))]
+    (b4--prep-new)]
    ["Enroll existing branch"
-    ("e" "Enroll current branch, using the passed tag, branch, or commit as fork base" (lambda () (interactive) (message "Enroll current branch")))]])
+    (b4--prep-enroll)]]
+  ["Execute"
+   ("x" "Run b4" b4--prep-run)])
+
+(transient-define-argument b4--prep-new ()
+  "Create a new branch."
+  :argument "new_series_name="
+  :shortarg "n"
+  :description "From a new branch"
+  :class 'transient-option
+  :reader 'b4--prompt-ns
+  :prompt "New Branch: ")
+
+(transient-define-argument b4--prep-enroll ()
+  "Enroll existing branch as fork base."
+  :argument "enroll_base="
+  :shortarg "e"
+  :description "From a branch, tag or commit"
+  :class 'transient-option
+  :choices (vc-git-branches))
+
+(transient-define-suffix b4--prep-run (&optional args)
+  "Run `b4 prep` with all provided arguments"
+  (interactive (list (transient-args transient-current-command)))
+  (let* ((buffer "*b4*")
+         (default-directory b4-git-repo)
+         (name "b4")
+         (command "b4 prep"))
+    (start-process name buffer command args)))
+
 
 ;; TODO
 (defun b4--send ()
@@ -94,6 +160,26 @@ Argument MSGID The message-id.")
 ;; Mail
 (defun b4--mail-get-msgid ()
   "Get the message-id from an email.")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Utility
+;;;
+(defun b4--prompt-ns (prompt _initial-input _history)
+  "Prompt User for input string containing no spaces."
+  (let* ((val (read-from-minibuffer prompt))
+         (trim (lambda (regexp string)
+                 (save-match-data
+                   (if (string-match regexp string)
+                       (replace-match "" t t string)
+                     string)))))
+    (setq val (funcall trim "\\`\\(?:[ \t\n\r]+\\)"
+                       (funcall trim "\\(?:[ \t\n\r]+\\)\\'" val)))
+    (cond ((string= val "")
+           (user-error "Need non-empty input"))
+          ((string-match-p "[\s\t\n]" val)
+           (user-error "Input contains whitespace"))
+          (t val))))
+
 
 (provide 'b4)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
