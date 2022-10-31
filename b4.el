@@ -6,7 +6,7 @@
 ;; Created: Sun Oct  9 12:13:42 2022 (+0200)
 ;; URL: https://github.com/f3sch/b4.el
 ;; Version: 0.1
-;; Package-Requires: ((emacs "28.1") (magit "3.0.0"))
+;; Package-Requires: ((emacs "28.2") (magit "3.0.0"))
 ;; Keywords: magit, mail, vc
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
