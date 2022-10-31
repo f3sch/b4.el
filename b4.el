@@ -6,8 +6,8 @@
 ;; Created: Sun Oct  9 12:13:42 2022 (+0200)
 ;; URL: https://github.com/f3sch/b4.el
 ;; Version: 0.1
-;; Package-Requires: ((emacs "28.1"))
-;; Keywords: maint, mail, vc
+;; Package-Requires: ((emacs "28.1") (magit "3.0.0"))
+;; Keywords: magit, mail, vc
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;;; Commentary:
@@ -46,6 +46,7 @@
 ;; For nice menus
 (require 'transient)
 ;; Git stuff
+(require 'magit)
 (require 'vc-git)
 ;; Common library
 (require 'cl-lib)
@@ -54,7 +55,7 @@
 ;;; Customization
 
 (defgroup b4 nil
-  "b4 warpper function library."
+  "The b4 wrapper function library."
   :group 'convenience)
 
 (defcustom b4-git-repo nil
@@ -64,13 +65,13 @@ Should probably be your kernel git repository."
   :type '(directory))
 
 (defun b4--git-repo-show ()
-  "Show b4-git-repo variable"
-  (propertize (format "Repo at %s" b4-git-repo) 'face 'success))
+  "Show current repository."
+  (concat "Repository at " (propertize (format "%s" b4-git-repo) 'face 'success)))
 
 (defun b4--git-repo-choose ()
-  "Choose git repo locations"
-    (interactive)
-    ())
+  "Choose git repository locations."
+  (interactive)
+  (setq b4-git-repo (expand-file-name (read-directory-name "Repository"))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -78,7 +79,7 @@ Should probably be your kernel git repository."
 
 ;; TODO
 (defun b4--am ()
-  "Create an mbox file that is ready for git-am.
+  "Create an mailbox file that is ready for git-am.
 Argument MSGID The message-id.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -97,8 +98,9 @@ Argument MSGID The message-id.")
 (transient-define-prefix b4--prep-transient ()
   "Prepare your patch series for submission."
   :incompatible '(("n" "e"))
-  [:description b4--git-repo-show
-                 [("R" b4--git-repo-choose "--repo=")]]
+  [["General"
+    ("R" b4--git-repo-choose :description b4--git-repo-show)
+    ("q" transient-quit-one :description "Quit")]]
   [["Arguments"
     ("-h" "Show help message and exit" "--help")
     ("-c" "Automatically populate cover letter trailers with To and Cc addresses" "--auto-to-cc")
@@ -110,9 +112,7 @@ Argument MSGID The message-id.")
   [["Create new branch"
     (b4--prep-new)]
    ["Enroll existing branch"
-    (b4--prep-enroll)]]
-  ["Execute"
-   ("x" "Run b4" b4--prep-run)])
+    (b4--prep-enroll)]])
 
 (transient-define-argument b4--prep-new ()
   "Create a new branch."
@@ -120,7 +120,7 @@ Argument MSGID The message-id.")
   :shortarg "n"
   :description "From a new branch"
   :class 'transient-option
-  :reader 'b4--prompt-ns
+  :reader 'magit-read-string-ns
   :prompt "New Branch: ")
 
 (transient-define-argument b4--prep-enroll ()
@@ -132,7 +132,7 @@ Argument MSGID The message-id.")
   :choices (vc-git-branches))
 
 (transient-define-suffix b4--prep-run (&optional args)
-  "Run `b4 prep` with all provided arguments"
+  "Run `b4 prep` with all provided arguments."
   (interactive (list (transient-args transient-current-command)))
   (let* ((buffer "*b4*")
          (default-directory b4-git-repo)
@@ -163,23 +163,6 @@ Argument MSGID The message-id.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Utility
-;;;
-(defun b4--prompt-ns (prompt _initial-input _history)
-  "Prompt User for input string containing no spaces."
-  (let* ((val (read-from-minibuffer prompt))
-         (trim (lambda (regexp string)
-                 (save-match-data
-                   (if (string-match regexp string)
-                       (replace-match "" t t string)
-                     string)))))
-    (setq val (funcall trim "\\`\\(?:[ \t\n\r]+\\)"
-                       (funcall trim "\\(?:[ \t\n\r]+\\)\\'" val)))
-    (cond ((string= val "")
-           (user-error "Need non-empty input"))
-          ((string-match-p "[\s\t\n]" val)
-           (user-error "Input contains whitespace"))
-          (t val))))
-
 
 (provide 'b4)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
