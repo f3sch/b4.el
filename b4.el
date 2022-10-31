@@ -48,8 +48,6 @@
 ;; Git stuff
 (require 'magit)
 (require 'vc-git)
-;; Common library
-(require 'cl-lib)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Customization
@@ -79,7 +77,7 @@ Should probably be your kernel git repository."
 
 ;; TODO
 (defun b4--am ()
-  "Create an mailbox file that is ready for git-am.
+  "Create a mailbox file that is ready for git-am.
 Argument MSGID The message-id.")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
