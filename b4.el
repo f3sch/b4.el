@@ -9,6 +9,7 @@
 ;; Package-Requires: ((emacs "28.1") (magit "3.0.0"))
 ;; Keywords: magit, mail, vc
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 ;;
 ;;; Commentary:
 ;;  b4.el represent an assortment of wrapper functions for the b4
@@ -43,34 +44,50 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Required packages/libraries
 
-;; For nice menus
 (require 'transient)
-;; Git stuff
-(require 'magit)
+(require 'magit nil t)
 (require 'vc-git)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Constants
+
+(defconst b4--magic-marker
+  "'--- b4-submit-tracking ---'"
+  "This is the b4 magic marker.
+
+It marks for example the cover-letter commit.")
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Customization
 
 (defgroup b4 nil
   "The b4 wrapper function library."
-  :group 'convenience)
+  :group 'convenience
+  :package-version '(b4 . "0.1")
+  :link '(url-link "https://b4.docs.kernel.org/en/latest/index.html"))
 
-(defcustom b4-git-repo nil
+(defcustom b4-repo-dir nil
   "Default directory for executing b4 in.
 Should probably be your kernel git repository."
-  :group 'b4
+  :package-version '(b4 . "0.1")
   :type '(directory))
 
-(defun b4--git-repo-show ()
-  "Show current repository."
-  (concat "Repository at " (propertize (format "%s" b4-git-repo) 'face 'success)))
+;; mode map
+(defvar b4-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "Q") 'kill-buffer)
+    map)
+  "Keymap for `b4-mode'.")
 
-(defun b4--git-repo-choose ()
-  "Choose git repository locations."
-  (interactive)
-  (setq b4-git-repo (expand-file-name (read-directory-name "Repository"))))
+;; major mode
+(define-derived-mode b4-mode special-mode "b4"
+  :group 'b4
+  "Special mode for b4 buffers.
 
+\\{b4-mode-map}"
+  (buffer-disable-undo)
+  (setq truncate-lines t))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Maintainer-oriented:
@@ -85,41 +102,59 @@ Argument MSGID The message-id.")
 
 ;; TODO
 ;; Prep Command
-;; Preparing a patch series. Either by creating a new branch org enrolling an existing one.
+;; Preparing a patch series. Either by creating a new branch or enrolling an existing one.
 
-;;;### autoload
-(defun b4-prep ()
+(transient-define-prefix b4-prep ()
   "(EXPERIMENTAL) prepare your series for submission."
-  (interactive)
-  (b4--prep-transient))
-
-(transient-define-prefix b4--prep-transient ()
-  "Prepare your patch series for submission."
-  :incompatible '(("n" "e"))
   [["General"
-    ("R" b4--git-repo-choose :description b4--git-repo-show)
+    (b4--repo-pick-transient)
+    (b4--show-help)
     ("q" transient-quit-one :description "Quit")]]
+  ["Information"
+   (b4--show-current-revision)]
   [["Arguments"
-    ("-h" "Show help message and exit" "--help")
     ("-c" "Automatically populate cover letter trailers with To and Cc addresses" "--auto-to-cc")
-    ("-p" "Output prep-tracked commits as patches" "--format-patch=")
-    ("-e" "Edit the cover letter" "--edit-cover-letter")
-    ("-s" "Show current series revision number" "--show-revision")
     ("-f" "Force revision to be this number instead" "--force-revision=")
-    ("-m" "Mark current revision as send and reroll (requires cover letter msgid)" "--manual-reroll=")]]
+    ("-m" "Mark current revision as send and reroll (requires cover letter msgid)" "--manual-reroll=")]
+   ["Actions"
+    (b4--prep-edit-cover-letter)
+    (b4--prep-output)]]
   [["Create new branch"
     (b4--prep-new)]
    ["Enroll existing branch"
     (b4--prep-enroll)]])
 
-(transient-define-argument b4--prep-new ()
-  "Create a new branch."
-  :argument "new_series_name="
-  :shortarg "n"
-  :description "From a new branch"
-  :class 'transient-option
-  :reader 'magit-read-string-ns
-  :prompt "New Branch: ")
+(transient-define-suffix b4--prep-new ()
+  "Prepare a patch series from a new branch."
+  :key "n"
+  :description "From new Branch"
+  (interactive)
+  (let ((branch (magit-read-string-ns "Branch name: ")))
+    (message "Branch Name: %s" branch)))
+
+(transient-define-suffix b4--prep-edit-cover-letter ()
+  "Edit the cover letter."
+  :key "ae"
+  :transient t
+  :description "Edit the cover letter"
+  (interactive)
+  (let ((commit (b4--find-cover-commit)))
+    (message "Cover-letter id is %s" commit)))
+
+(transient-define-suffix b4--prep-output ()
+  "Output prep-tracked commits as patches."
+  :key "ap"
+  :transient t
+  :description "Output prep-tracked commits as patches"
+  (interactive)
+  (let* ((outdir (expand-file-name (read-directory-name "Output Directory: ")))
+         (default-directory (if b4-repo-dir
+                                b4-repo-dir
+                              (user-error "No repository picked!")))
+         (args (concat "prep --format-patch " outdir))
+         (buffer (get-buffer-create "*b4*"))
+         (b4--prep-output-name "b4-prep-output"))
+    (start-process b4--prep-output-name buffer "b4" args)))
 
 (transient-define-argument b4--prep-enroll ()
   "Enroll existing branch as fork base."
@@ -128,16 +163,6 @@ Argument MSGID The message-id.")
   :description "From a branch, tag or commit"
   :class 'transient-option
   :choices (vc-git-branches))
-
-(transient-define-suffix b4--prep-run (&optional args)
-  "Run `b4 prep` with all provided arguments."
-  (interactive (list (transient-args transient-current-command)))
-  (let* ((buffer "*b4*")
-         (default-directory b4-git-repo)
-         (name "b4")
-         (command "b4 prep"))
-    (start-process name buffer command args)))
-
 
 ;; TODO
 (defun b4--send ()
@@ -162,6 +187,79 @@ Argument MSGID The message-id.")
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Utility
 
+(defclass b4--view-variable (transient-variable)
+  ((scope :initarg :scope)))
+
+(transient-define-argument b4--show-current-revision ()
+  "Show the current revision of the patch series."
+  :class 'b4--view-variable
+  :key ""
+  :argument ""
+  :description (lambda ()
+                 (let ((command "b4 prep --show-revision")
+                       (default-directory b4-repo-dir))
+                   (if b4-repo-dir
+                       (concat "Revision: " (propertize (shell-command-to-string command) 'face 'transient-argument))
+                     "None"))))
+
+(transient-define-argument b4--repo-pick-transient ()
+  "Pick a repository to run b4 in."
+  :class 'b4--view-variable
+  :key "R"
+  :variable 'b4-repo-dir
+  :argument ""
+  :description (lambda ()
+                 (concat "Repository: " (propertize (pp-to-string b4-repo-dir) 'face 'transient-argument)))
+  :prompt "Pick a repository: "
+  :reader (lambda (prompt _initial-input _history)
+            (let ((path (file-local-name (expand-file-name (read-directory-name prompt)))))
+              (if (not (vc-git-root path))
+                  (user-error "Not a git repository!"))
+              (setq b4-repo-dir path))))
+
+(defun b4--quit-buffer ()
+  "Kill/Quit the `*b4*' buffer."
+  (kill-buffer "*b4*"))
+
+(defun b4--clear-buffer ()
+  "Clear the `*b4*' buffer."
+  (interactive)
+  (save-excursion
+    (let ((buffer "*b4*")
+          (inhibit-read-only t))
+      (set-buffer buffer)
+      (delete-region 1 (+ 1 (buffer-size))))))
+
+(defun b4--buffer-exists-p ()
+  "Check if the `*b4*' buffer already exists."
+  (not (equal (get-buffer "*b4*") nil)))
+
+(transient-define-suffix b4--show-help ()
+  "Show `b4 --help'."
+  :key "h"
+  :description "Show help"
+  (interactive)
+  (let ((buffer "*b4*"))
+    (call-process "b4" nil buffer nil "--help")
+    (set-buffer buffer)
+    (b4-mode)
+    (switch-to-buffer buffer)))
+
+(defun b4--find-cover-commit ()
+  "Find the cover commit with the help of the `b4--magic-marker'.
+
+Return the commit id or raise an error if there is such a
+commit cannot be found."
+  (let* ((default-directory (if b4-repo-dir
+                                b4-repo-dir
+                              (user-error "No  repository set!")))
+         (command (concat "git log -F --pretty=format:'%H' --max-count=1 --since=1.year --no-abbrev-commit --grep=" b4--magic-marker))
+         (commit (shell-command-to-string command)))
+    (if (string-empty-p commit)
+        (user-error "No cover-letter commit found!"))
+    commit))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (provide 'b4)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; b4.el ends here
